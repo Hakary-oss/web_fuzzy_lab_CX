@@ -1,0 +1,1423 @@
+<!-- Chosen Palette: Slate & Teal Harmony (Warm Neutrals with Soft Teal accents for a crisp, calm corporate CX interface) -->
+<!-- Application Structure Plan: The application is structured as a single-page interactive dashboard with three core views accessible via sidebar navigation: 1) Executive Dashboard & Daily Monitoring (high-level KPIs, 5-per-day quota alert queue, satisfaction breakdown chart, and searchable status table), 2) Client Directory (searchable table with full contact info, cycle counters, edit company modal, modal form to register new clients with custom deployment types, and CSV import/export capability), and 3) Evaluation & Survey Portal (interactive form with WhatsApp message parser and automatic 4-month cycle scheduling). Modal dialogs handle historical reviews, new client registration, and editing existing client details. -->
+<!-- Visualization & Content Choices: 
+  - Donut Chart (Chart.js canvas): Visualizes CSAT rating distributions (Excelente/Regular/Mal/Pendiente). Interactive legend & tooltips.
+  - Interactive Daily Quota Queue (HTML/Tailwind + JS): Dynamic list showing clients due for their 4-month cycle review, capped at 5 daily.
+  - Interactive Modals & Toast Notifications (HTML/CSS + JS): Displays detailed historical logs per company, new client creation dialog, client data edit dialog, and real-time operational feedback.
+  - Font Icons (Phosphor CSS font icon family): Replaces raster/SVG icons for lightweight visual cues without using inline SVG elements.
+-->
+<!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CX ALM Platform | Dashboard & Monitoreo Trimestral</title>
+    
+    <!-- Google Fonts Inter & Phosphor Icons (CSS Font-based) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.0.3/src/bold/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.0.3/src/regular/style.css">
+    <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.0.3/src/fill/style.css">
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        alm: {
+                            50: '#f0fdfa',
+                            100: '#ccfbf1',
+                            500: '#14b8a6',
+                            600: '#0d9488',
+                            700: '#0f766e',
+                            800: '#115e59',
+                            900: '#134e4a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .fade-in { animation: fadeIn 0.25s ease-in-out; }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f5f9; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 480px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 220px;
+            max-height: 240px;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-screen overflow-hidden flex font-sans">
+
+    <!-- Sidebar de Navegación -->
+    <aside class="w-64 bg-alm-900 text-white flex flex-col shadow-xl z-10 flex-shrink-0">
+        <div class="h-16 flex items-center px-6 border-b border-alm-800">
+            <i class="ph-fill ph-shield-check text-2xl text-teal-400 mr-3"></i>
+            <h1 class="text-lg font-bold tracking-wide">ALM<span class="text-teal-400 font-light">Support CX</span></h1>
+        </div>
+        
+        <nav class="flex-1 py-6 px-3 space-y-2">
+            <button onclick="navigate('dashboard')" id="nav-dashboard" class="w-full flex items-center px-4 py-3 rounded-lg bg-alm-800 text-white transition-colors">
+                <i class="ph ph-squares-four text-xl mr-3"></i>
+                <span class="font-medium">Dashboard</span>
+            </button>
+            <button onclick="navigate('directory')" id="nav-directory" class="w-full flex items-center px-4 py-3 rounded-lg text-alm-100 hover:bg-alm-800 transition-colors">
+                <i class="ph ph-address-book text-xl mr-3"></i>
+                <span class="font-medium">Directorio</span>
+            </button>
+            <button onclick="navigate('evaluation')" id="nav-evaluation" class="w-full flex items-center px-4 py-3 rounded-lg text-alm-100 hover:bg-alm-800 transition-colors">
+                <i class="ph ph-clipboard-text text-xl mr-3"></i>
+                <span class="font-medium">Realizar Evaluación</span>
+            </button>
+        </nav>
+        
+        <div class="p-4 border-t border-alm-800 bg-alm-900/50 text-xs text-teal-200">
+            <div class="flex items-center space-x-2 mb-1">
+                <i class="ph-bold ph-calendar-check text-base text-teal-400"></i>
+                <span class="font-semibold text-white">Ciclo: 3 Rev./Año</span>
+            </div>
+            <p class="text-slate-300 text-[11px] leading-tight">Frecuencia cada 4 meses por cliente (Cuota máx: 5/día).</p>
+        </div>
+
+        <div class="p-4 border-t border-alm-800">
+            <div class="flex items-center">
+                <div class="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center font-bold text-white">A</div>
+                <div class="ml-3">
+                    <p class="text-sm font-medium text-white">Admin Soporte</p>
+                    <p class="text-xs text-alm-100">Líder CX & Monitoreo</p>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Contenido Principal -->
+    <main class="flex-1 flex flex-col h-screen overflow-hidden">
+        <!-- Header Superior -->
+        <header class="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm flex-shrink-0">
+            <h2 id="page-title" class="text-xl font-semibold text-slate-800">Dashboard General & Monitoreo 3x/Año</h2>
+            <div class="flex items-center space-x-4">
+                <button onclick="resetDataToDefault()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg transition font-medium flex items-center">
+                    <i class="ph ph-arrow-counter-clockwise mr-1.5 text-sm"></i> Reiniciar Datos Demo
+                </button>
+                <span class="text-xs bg-teal-50 border border-teal-200 text-teal-800 px-3 py-1 rounded-full font-medium flex items-center">
+                    <i class="ph ph-arrows-clockwise text-sm mr-1.5 text-teal-600"></i> Esquema 3 Evaluaciones/Año
+                </span>
+                <button class="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition" title="Notificaciones">
+                    <i class="ph ph-bell text-xl"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- Contenedor Dinámico de Vistas -->
+        <div class="flex-1 overflow-y-auto p-8 relative" id="content-area">
+            
+            <!-- VISTA 1: DASHBOARD -->
+            <div id="view-dashboard" class="fade-in block space-y-6">
+                <!-- Introducción del módulo -->
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 class="font-bold text-slate-800 text-base mb-1">Resumen de Calidad de Servicio y Experiencia del Cliente (CX)</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Este panel centraliza el seguimiento del programa de evaluaciones trianuales de la plataforma ALM. Permite auditar el nivel de satisfacción de los Oficiales de Cumplimiento, controlar la cuota operativa diaria de monitoreo (máximo 5 empresas por día) y verificar las próximas fechas de revisión programadas automáticamente cada 4 meses.
+                    </p>
+                </div>
+
+                <!-- Tarjetas de métricas KPI -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-sm text-slate-500 mb-1">Total Clientes</p>
+                                <h3 class="text-3xl font-bold text-slate-800" id="stat-total">0</h3>
+                            </div>
+                            <div class="p-2.5 bg-blue-50 text-blue-600 rounded-xl"><i class="ph ph-buildings text-2xl"></i></div>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-sm text-slate-500 mb-1">Excelente</p>
+                                <h3 class="text-3xl font-bold text-emerald-600" id="stat-excellent">0</h3>
+                            </div>
+                            <div class="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl"><i class="ph ph-smiley text-2xl"></i></div>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-sm text-slate-500 mb-1">Regular</p>
+                                <h3 class="text-3xl font-bold text-amber-500" id="stat-regular">0</h3>
+                            </div>
+                            <div class="p-2.5 bg-amber-50 text-amber-600 rounded-xl"><i class="ph ph-smiley-meh text-2xl"></i></div>
+                        </div>
+                    </div>
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-sm text-slate-500 mb-1">Mal</p>
+                                <h3 class="text-3xl font-bold text-rose-600" id="stat-bad">0</h3>
+                            </div>
+                            <div class="p-2.5 bg-rose-50 text-rose-600 rounded-xl"><i class="ph ph-smiley-sad text-2xl"></i></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <!-- Panel de Alertas de Monitoreo Diario -->
+                    <div class="lg:col-span-2 bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden flex flex-col">
+                        <div class="px-6 py-4 border-b border-slate-100 bg-rose-50/80 flex flex-wrap justify-between items-center gap-2">
+                            <div>
+                                <h3 class="font-semibold text-rose-900 flex items-center">
+                                    <i class="ph-fill ph-warning-circle text-xl mr-2 text-rose-600"></i> Monitoreo Diario (Máximo 5 Clientes/Día)
+                                </h3>
+                                <p class="text-xs text-rose-700 mt-0.5">Asignación según el patrón de 3 evaluaciones anuales (cada 4 meses)</p>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span class="bg-white text-slate-700 text-xs font-semibold px-3 py-1 rounded-full border border-slate-200 shadow-sm" id="daily-quota-badge">Evaluados hoy: 0/5</span>
+                                <span class="bg-rose-200 text-rose-800 text-xs font-bold px-2.5 py-1 rounded-full" id="alert-count">0</span>
+                            </div>
+                        </div>
+                        <div class="p-0 flex-1 overflow-y-auto h-56 custom-scrollbar">
+                            <ul id="monitoring-list" class="divide-y divide-slate-100">
+                                <!-- Filas dinámicas -->
+                            </ul>
+                        </div>
+                    </div>
+                    
+                    <!-- Gráfica de Donut -->
+                    <div class="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex flex-col justify-between">
+                        <h3 class="font-semibold text-slate-800 border-b border-slate-100 pb-2">Distribución CX ALM</h3>
+                        <div class="chart-container my-auto">
+                            <canvas id="satisfactionChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tabla Resumen de Estado General con Buscador Incorporado -->
+                <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div class="px-6 py-4 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center bg-slate-50 gap-4">
+                        <div>
+                            <h3 class="font-semibold text-slate-800">Estado General y Ciclos de Monitoreo</h3>
+                            <span class="text-xs text-slate-500"><i class="ph ph-info mr-1"></i>Cada cliente requiere 3 revisiones anuales</span>
+                        </div>
+                        <!-- Buscador en la tabla del Dashboard -->
+                        <div class="relative w-full md:w-72">
+                            <i class="ph ph-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400"></i>
+                            <input type="text" id="search-dashboard-input" onkeyup="filterDashboardTable()" placeholder="Buscar empresa u oficial..." class="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-alm-600 focus:border-transparent bg-white">
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-white border-b border-slate-100 text-xs uppercase tracking-wider text-slate-500">
+                                    <th class="px-6 py-4 font-semibold">Empresa</th>
+                                    <th class="px-6 py-4 font-semibold">Oficial de Cumplimiento</th>
+                                    <th class="px-6 py-4 font-semibold">Última Eval.</th>
+                                    <th class="px-6 py-4 font-semibold">Próxima Eval.</th>
+                                    <th class="px-6 py-4 font-semibold">Satisfacción</th>
+                                    <th class="px-6 py-4 font-semibold text-right">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dashboard-table-body" class="text-sm">
+                                <!-- Filas dinámicas -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VISTA 2: DIRECTORIO DE CLIENTES -->
+            <div id="view-directory" class="fade-in hidden space-y-6">
+                <!-- Encabezado del módulo -->
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-lg">Directorio Central y Carga Masiva</h3>
+                    </div>
+                    <button onclick="openNewClientModal()" class="flex-shrink-0 bg-alm-600 hover:bg-alm-700 text-white font-medium text-sm px-4 py-2.5 rounded-lg transition shadow-md flex items-center">
+                        <i class="ph-bold ph-plus-circle text-lg mr-2"></i> Registrar Nuevo Cliente
+                    </button>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div class="px-6 py-5 border-b border-slate-100 flex flex-col lg:flex-row lg:justify-between lg:items-center bg-slate-50 gap-4">
+                        <div>
+                            <h3 class="font-semibold text-slate-800">Directorio General de Clientes ALM</h3>
+                            <p class="text-xs text-slate-500 mt-0.5">Gestión de contactos e historial de evaluaciones</p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <input type="file" id="file-import" class="hidden" accept=".csv" onchange="importCSV(event)">
+                            <button onclick="document.getElementById('file-import').click()" class="flex items-center px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition shadow-sm">
+                                <i class="ph ph-upload-simple mr-2 text-lg text-alm-600"></i> Importar Masivo
+                            </button>
+                            <button onclick="exportCSV()" class="flex items-center px-3.5 py-2 bg-white border border-slate-300 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition shadow-sm">
+                                <i class="ph ph-download-simple mr-2 text-lg text-alm-600"></i> Exportar CSV
+                            </button>
+                            <div class="relative w-full lg:w-64">
+                                <i class="ph ph-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400"></i>
+                                <input type="text" id="search-directory-input" onkeyup="filterDirectory()" placeholder="Buscar empresa u oficial..." class="w-full pl-9 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-alm-600 focus:border-transparent">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead>
+                                <tr class="bg-white border-b border-slate-100 text-xs uppercase tracking-wider text-slate-500">
+                                    <th class="px-6 py-4 font-semibold">Empresa</th>
+                                    <th class="px-6 py-4 font-semibold">Tipo de Cliente</th>
+                                    <th class="px-6 py-4 font-semibold">Oficial de Cumplimiento</th>
+                                    <th class="px-6 py-4 font-semibold">Teléfono / Correo</th>
+                                    <th class="px-6 py-4 font-semibold">Evaluaciones (Año)</th>
+                                    <th class="px-6 py-4 font-semibold text-right">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="directory-table-body" class="text-sm">
+                                <!-- Filas dinámicas -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VISTA 3: EVALUACIÓN Y MONITOREO CX -->
+            <div id="view-evaluation" class="fade-in max-w-4xl mx-auto hidden space-y-6">
+                <!-- Introducción del módulo -->
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                    <h3 class="font-bold text-slate-800 text-base mb-1">Módulo de Evaluación y Encuesta Directa</h3>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        Seleccione una empresa para enviar la encuesta preconfigurada por WhatsApp al Oficial de Cumplimiento. Al recibir sus respuestas, utilice el analizador inteligente para auto-completar las respuestas técnicas y registrar las observaciones operativas de soporte.
+                    </p>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+                    <div class="px-8 py-6 border-b border-slate-100 bg-slate-50 flex flex-wrap justify-between items-center gap-4">
+                        <div>
+                            <h3 class="font-semibold text-xl text-slate-800">Formulario de Evaluación CX ALM</h3>
+                            <p class="text-sm text-slate-500 mt-1">Registre los comentarios del cliente y las notas de soporte.</p>
+                        </div>
+                        <button type="button" onclick="toggleQuickPaste()" class="text-xs bg-teal-100 hover:bg-teal-200 text-teal-800 px-3.5 py-2 rounded-lg font-medium transition flex items-center border border-teal-200">
+                            <i class="ph ph-clipboard-text text-base mr-1.5 text-teal-700"></i> Auto-Pegar Respuesta de WhatsApp
+                        </button>
+                    </div>
+                    
+                    <!-- Panel de Pegado Rápido de Respuesta de WhatsApp -->
+                    <div id="quick-paste-box" class="hidden p-5 bg-teal-50/60 border-b border-teal-200 fade-in">
+                        <label class="block text-xs font-semibold text-teal-900 mb-1">Copie y pegue aquí el mensaje devuelto por el cliente en WhatsApp:</label>
+                        <textarea id="raw-whatsapp-input" rows="3" class="w-full border border-teal-200 rounded-lg p-3 text-xs text-slate-800 bg-white focus:ring-2 focus:ring-alm-600 focus:border-transparent" placeholder="Ejemplo: 1. Excelente velocidad. 2. SLA cumplido a tiempo. 3. Interfaz intuitiva. Satisfacción: Excelente"></textarea>
+                        <div class="flex justify-end mt-2 space-x-2">
+                            <button type="button" onclick="toggleQuickPaste()" class="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800">Cancelar</button>
+                            <button type="button" onclick="parseAndFillAnswers()" class="px-4 py-1.5 bg-alm-600 hover:bg-alm-800 text-white font-medium text-xs rounded-lg transition shadow-sm flex items-center">
+                                <i class="ph ph-magic-wand mr-1.5 text-sm"></i> Auto-completar Formulario
+                            </button>
+                        </div>
+                    </div>
+
+                    <form id="evaluation-form" class="p-8 space-y-8" onsubmit="submitEvaluation(event)">
+                        <!-- Selección de Empresa -->
+                        <div>
+                            <label class="block text-sm font-semibold text-slate-800 mb-2">Seleccione la Empresa a Evaluar</label>
+                            <select id="eval-company" required onchange="onCompanySelect(this.value)" class="w-full border border-slate-300 rounded-lg px-4 py-3 text-slate-700 focus:outline-none focus:ring-2 focus:ring-alm-600 focus:border-transparent font-medium">
+                                <option value="">-- Seleccionar de la lista --</option>
+                                <!-- Opciones dinámicas -->
+                            </select>
+                        </div>
+
+                        <!-- Card de Enviar Encuesta por WhatsApp -->
+                        <div id="company-contact-card" class="hidden p-5 bg-emerald-50 border border-emerald-200 rounded-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                            <div>
+                                <span class="text-xs font-bold uppercase tracking-wider text-emerald-800">Oficial de Cumplimiento Registrado</span>
+                                <p class="text-base font-bold text-slate-800" id="info-officer-name">-</p>
+                                <p class="text-xs text-slate-600 mt-0.5"><i class="ph ph-phone mr-1 text-emerald-600"></i> <span id="info-officer-phone">-</span> &bull; <i class="ph ph-arrows-clockwise text-emerald-600 ml-1"></i> Ciclo: <span id="info-officer-cycle" class="font-semibold text-emerald-800">3 Rev./Año</span></p>
+                            </div>
+                            <button type="button" onclick="sendWhatsAppSurvey()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm px-5 py-3 rounded-xl flex items-center transition shadow-md hover:shadow-lg">
+                                <i class="ph-fill ph-whatsapp-logo text-xl mr-2"></i> Enviar Encuesta por WhatsApp
+                            </button>
+                        </div>
+
+                        <!-- Preguntas Técnicas -->
+                        <div class="border-t border-slate-100 pt-6">
+                            <div class="flex justify-between items-center mb-6">
+                                <h4 class="font-semibold text-slate-800">1. Cuestionario Técnico (3 Preguntas Operativas)</h4>
+                                <span class="text-xs text-slate-500 bg-slate-100 px-3 py-1 rounded-full">Evaluación de Plataforma ALM</span>
+                            </div>
+                            
+                            <!-- Pregunta 1 -->
+                            <div class="mb-6">
+                                <label class="block text-sm text-slate-700 mb-2 font-medium">1.1 ¿Cómo califica la eficacia de nuestra plataforma ALM en la generación y gestión de alertas transaccionales?</label>
+                                <textarea id="q1" required rows="2" class="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-alm-600 focus:border-transparent" placeholder="Respuesta obtenida del cliente..."></textarea>
+                            </div>
+                            
+                            <!-- Pregunta 2 -->
+                            <div class="mb-6">
+                                <label class="block text-sm text-slate-700 mb-2 font-medium">1.2 ¿El equipo de soporte resolvió sus dudas operativas en los tiempos establecidos (SLA)?</label>
+                                <textarea id="q2" required rows="2" class="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-alm-600 focus:border-transparent" placeholder="Respuesta obtenida del cliente..."></textarea>
+                            </div>
+
+                            <!-- Pregunta 3 -->
+                            <div class="mb-6">
+                                <label class="block text-sm text-slate-700 mb-2 font-medium">1.3 ¿Qué tan intuitiva le resulta la interfaz del sistema para la extracción de sus reportes regulatorios?</label>
+                                <textarea id="q3" required rows="2" class="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-alm-600 focus:border-transparent" placeholder="Respuesta obtenida del cliente..."></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Observaciones del Cliente y Soporte -->
+                        <div class="border-t border-slate-100 pt-6 space-y-6">
+                            <h4 class="font-semibold text-slate-800">2. Observaciones y Monitoreo de Seguimiento</h4>
+                            
+                            <div>
+                                <label class="block text-sm text-slate-700 mb-2 font-medium flex items-center">
+                                    <i class="ph ph-chat-circle-dots text-lg mr-1.5 text-teal-600"></i> Observación o Comentarios Adicionales del Cliente
+                                </label>
+                                <textarea id="client-note" rows="2" class="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-alm-600 focus:border-transparent" placeholder="Sugerencias o reclamos indicados por el cliente..."></textarea>
+                            </div>
+
+                            <div>
+                                <label class="block text-sm text-slate-700 mb-2 font-medium flex items-center">
+                                    <i class="ph ph-wrench text-lg mr-1.5 text-slate-600"></i> Observación de Seguimiento - Soporte Técnico / CX
+                                </label>
+                                <textarea id="tech-note" rows="2" class="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-alm-600 focus:border-transparent bg-slate-50/50" placeholder="Anotaciones internas del equipo de soporte..."></textarea>
+                            </div>
+                        </div>
+
+                        <!-- Nivel de Satisfacción -->
+                        <div class="border-t border-slate-100 pt-6">
+                            <label class="block text-sm font-semibold text-slate-800 mb-4">3. Nivel de Satisfacción General Indicado por el Cliente</label>
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <label class="flex items-center p-3.5 border border-slate-200 rounded-xl cursor-pointer hover:bg-emerald-50/50 transition">
+                                    <input type="radio" name="satisfaction" value="Excelente" required class="w-4 h-4 text-emerald-600 focus:ring-emerald-500">
+                                    <span class="ml-3 font-semibold text-slate-800">Excelente</span>
+                                    <span class="ml-auto w-3.5 h-3.5 rounded-full bg-emerald-500"></span>
+                                </label>
+
+                                <label class="flex items-center p-3.5 border border-slate-200 rounded-xl cursor-pointer hover:bg-amber-50/50 transition">
+                                    <input type="radio" name="satisfaction" value="Regular" class="w-4 h-4 text-amber-500 focus:ring-amber-400">
+                                    <span class="ml-3 font-semibold text-slate-800">Regular</span>
+                                    <span class="ml-auto w-3.5 h-3.5 rounded-full bg-amber-400"></span>
+                                </label>
+
+                                <label class="flex items-center p-3.5 border border-slate-200 rounded-xl cursor-pointer hover:bg-rose-50/50 transition">
+                                    <input type="radio" name="satisfaction" value="Mal" class="w-4 h-4 text-rose-600 focus:ring-rose-500">
+                                    <span class="ml-3 font-semibold text-slate-800">Mal</span>
+                                    <span class="ml-auto w-3.5 h-3.5 rounded-full bg-rose-500"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="border-t border-slate-100 pt-6 flex justify-end">
+                            <button type="submit" class="bg-alm-600 hover:bg-alm-800 text-white font-semibold py-3.5 px-8 rounded-xl transition shadow-md hover:shadow-lg flex items-center text-sm">
+                                <i class="ph ph-floppy-disk text-lg mr-2"></i> Guardar Evaluación y Programar Próxima
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Modal de Registro de Nuevo Cliente -->
+    <div id="new-client-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden fade-in p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-100">
+            <div class="px-6 py-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                <div class="flex items-center space-x-2">
+                    <i class="ph-bold ph-user-plus text-2xl text-alm-600"></i>
+                    <div>
+                        <h3 class="font-bold text-lg text-slate-800">Registrar Nuevo Cliente</h3>
+                        <p class="text-xs text-slate-500">Agregue una nueva empresa para monitoreo CX</p>
+                    </div>
+                </div>
+                <button onclick="closeNewClientModal()" class="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-full transition">
+                    <i class="ph ph-x text-xl"></i>
+                </button>
+            </div>
+            
+            <form id="new-client-form" onsubmit="saveNewClient(event)" class="p-6 space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Nombre de la Empresa *</label>
+                    <input type="text" id="new-company-name" required placeholder="Ej. Banco Continental, S.A." class="w-full border border-slate-300 rounded-lg px-3.5 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-alm-600 focus:border-transparent">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Tipo de Cliente *</label>
+                    <select id="new-company-type" required class="w-full border border-slate-300 rounded-lg px-3.5 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-alm-600 focus:border-transparent">
+                        <option value="">-- Seleccionar Tipo --</option>
+                        <option value="Nube Privada">Nube Privada</option>
+                        <option value="App">App</option>
+                        <option value="On-Premise">On-Premise</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Oficial de Cumplimiento *</label>
+                    <input type="text" id="new-officer-name" required placeholder="Ej. Lic. Andrea Morales" class="w-full border border-slate-300 rounded-lg px-3.5 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-alm-600 focus:border-transparent">
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Teléfono / WhatsApp *</label>
+                        <input type="text" id="new-officer-phone" required placeholder="+58 412 123-4567" class="w-full border border-slate-300 rounded-lg px-3.5 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-alm-600 focus:border-transparent">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Correo Electrónico *</label>
+                        <input type="email" id="new-officer-email" required placeholder="oficial@empresa.com" class="w-full border border-slate-300 rounded-lg px-3.5 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-alm-600 focus:border-transparent">
+                    </div>
+                </div>
+
+                <div class="pt-4 border-t border-slate-100 flex justify-end space-x-3">
+                    <button type="button" onclick="closeNewClientModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs rounded-lg transition">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="px-5 py-2 bg-alm-600 hover:bg-alm-700 text-white font-semibold text-xs rounded-lg transition shadow-sm flex items-center">
+                        <i class="ph ph-floppy-disk mr-1.5 text-sm"></i> Guardar Cliente
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal de Edición de Cliente Registrado -->
+    <div id="edit-client-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden fade-in p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-100">
+            <div class="px-6 py-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                <div class="flex items-center space-x-2">
+                    <i class="ph-bold ph-pencil-line text-2xl text-alm-600"></i>
+                    <div>
+                        <h3 class="font-bold text-lg text-slate-800">Editar Datos del Cliente</h3>
+                        <p class="text-xs text-slate-500">Actualice la información de contacto o del oficial de cumplimiento</p>
+                    </div>
+                </div>
+                <button onclick="closeEditClientModal()" class="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-full transition">
+                    <i class="ph ph-x text-xl"></i>
+                </button>
+            </div>
+            
+            <form id="edit-client-form" onsubmit="saveEditedClient(event)" class="p-6 space-y-4">
+                <input type="hidden" id="edit-client-id">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Nombre de la Empresa *</label>
+                    <input type="text" id="edit-company-name" required class="w-full border border-slate-300 rounded-lg px-3.5 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-alm-600 focus:border-transparent">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Tipo de Cliente *</label>
+                    <select id="edit-company-type" required class="w-full border border-slate-300 rounded-lg px-3.5 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-alm-600 focus:border-transparent">
+                        <option value="">-- Seleccionar Tipo --</option>
+                        <option value="Nube Privada">Nube Privada</option>
+                        <option value="App">App</option>
+                        <option value="On-Premise">On-Premise</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Oficial de Cumplimiento *</label>
+                    <input type="text" id="edit-officer-name" required class="w-full border border-slate-300 rounded-lg px-3.5 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-alm-600 focus:border-transparent">
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Teléfono / WhatsApp *</label>
+                        <input type="text" id="edit-officer-phone" required class="w-full border border-slate-300 rounded-lg px-3.5 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-alm-600 focus:border-transparent">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">Correo Electrónico *</label>
+                        <input type="email" id="edit-officer-email" required class="w-full border border-slate-300 rounded-lg px-3.5 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-alm-600 focus:border-transparent">
+                    </div>
+                </div>
+
+                <div class="pt-4 border-t border-slate-100 flex justify-end space-x-3">
+                    <button type="button" onclick="closeEditClientModal()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs rounded-lg transition">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="px-5 py-2 bg-alm-600 hover:bg-alm-700 text-white font-semibold text-xs rounded-lg transition shadow-sm flex items-center">
+                        <i class="ph ph-floppy-disk mr-1.5 text-sm"></i> Guardar Cambios
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal de Historial de Evaluaciones -->
+    <div id="history-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden fade-in p-4">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-slate-100">
+            <div class="px-6 py-5 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
+                <div>
+                    <h3 class="font-bold text-lg text-slate-800" id="modal-client-name">Historial de Evaluaciones</h3>
+                    <p class="text-xs text-slate-500" id="modal-client-info">Oficial de Cumplimiento &bull; Tipo</p>
+                </div>
+                <button onclick="closeHistoryModal()" class="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-full transition">
+                    <i class="ph ph-x text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto space-y-6 flex-1 custom-scrollbar" id="modal-history-content">
+                <!-- Se llena dinámicamente -->
+            </div>
+
+            <div class="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center">
+                <span class="text-xs text-slate-500"><i class="ph ph-calendar-blank mr-1"></i> Frecuencia: 3 revisiones al año</span>
+                <button onclick="closeHistoryModal()" class="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium text-xs rounded-lg transition">
+                    Cerrar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contenedor para notificaciones Toast -->
+    <div id="toast-container" class="fixed bottom-6 right-6 z-50 flex flex-col space-y-3"></div>
+
+    <!-- Lógica JavaScript Principal -->
+    <script>
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        function getDateMonthsAgo(months) {
+            let d = new Date();
+            d.setMonth(d.getMonth() - months);
+            return d.toISOString().split('T')[0];
+        }
+
+        const MONTHS_CYCLE = 4;
+        let todayEvaluatedCount = 0;
+
+        const defaultClients = [
+            { 
+                id: 1, 
+                name: "Financiera Global, S.A.", 
+                type: "Nube Privada", 
+                officer: "Roberto Sánchez", 
+                phone: "+58 412 555-1234", 
+                email: "rsanchez@finglobal.com", 
+                satisfaction: "Excelente", 
+                lastEvaluated: getDateMonthsAgo(1), 
+                nextEvaluation: '2026-11-15',
+                history: [
+                    {
+                        date: getDateMonthsAgo(1),
+                        cycle: "Ciclo 1 / 3",
+                        satisfaction: "Excelente",
+                        q1: "Las alertas se generan con gran rapidez y sin falsos positivos críticos.",
+                        q2: "Soporte atendió el caso en menos de 1 hora.",
+                        q3: "La interfaz es limpia e intuitiva.",
+                        clientNote: "Satisfechos con el rendimiento actual de la plataforma.",
+                        techNote: "Sin observaciones pendientes. Servidor estable."
+                    }
+                ]
+            },
+            { 
+                id: 2, 
+                name: "CriptoExchange Latam", 
+                type: "App", 
+                officer: "María Corina Pérez", 
+                phone: "+58 414 123-4567", 
+                email: "mperez@criptolatam.com", 
+                satisfaction: "Regular", 
+                lastEvaluated: getDateMonthsAgo(2), 
+                nextEvaluation: '2026-10-20',
+                history: [
+                    {
+                        date: getDateMonthsAgo(2),
+                        cycle: "Ciclo 1 / 3",
+                        satisfaction: "Regular",
+                        q1: "Las alertas funcionan bien pero requieren más filtros parametrizables.",
+                        q2: "Respuesta en SLA pero tardaron en escalar la duda técnica.",
+                        q3: "Fácil de usar pero tarda al exportar grandes volúmenes de datos.",
+                        clientNote: "Solicitamos optimizar la velocidad de descarga de reportes masivos.",
+                        techNote: "Programada actualización de índice en BD para optimizar reporte mensual."
+                    }
+                ]
+            },
+            { 
+                id: 3, 
+                name: "Seguros Andes, C.A.", 
+                type: "On-Premise", 
+                officer: "Carlos Méndez", 
+                phone: "+58 412 999-8877", 
+                email: "cmendez@segurosandes.com", 
+                satisfaction: "Mal", 
+                lastEvaluated: getDateMonthsAgo(4), 
+                nextEvaluation: todayStr,
+                history: [
+                    {
+                        date: getDateMonthsAgo(4),
+                        cycle: "Ciclo 3 / 3",
+                        satisfaction: "Mal",
+                        q1: "Hubo demora en la actualización de las listas de personas bloqueadas.",
+                        q2: "El ticket tardó 48 horas en resolverse.",
+                        q3: "Generó confusión la pestaña de parámetros.",
+                        clientNote: "Urgente llamada con el gerente de tecnología.",
+                        techNote: "Se realizó migración de servidor. Pendiente re-evaluación hoy."
+                    }
+                ]
+            },
+            { id: 4, name: "Casa de Bolsa Valores", type: "Nube Privada", officer: "Laura Giménez", phone: "+58 424 555-9999", email: "lgimenez@valoresbolsa.com", satisfaction: null, lastEvaluated: null, nextEvaluation: todayStr, history: [] },
+            { id: 5, name: "Remesas Express", type: "App", officer: "Fernando Díaz", phone: "+58 412 333-2211", email: "fdiaz@remesasexp.com", satisfaction: null, lastEvaluated: null, nextEvaluation: todayStr, history: [] },
+            { id: 6, name: "Cooperativa de Ahorro Integral", type: "On-Premise", officer: "Luis Silva", phone: "+58 412 111-2222", email: "lsilva@coop.com", satisfaction: null, lastEvaluated: null, nextEvaluation: todayStr, history: [] },
+            { id: 7, name: "Fondo de Inversión Z", type: "Nube Privada", officer: "Ana Gómez", phone: "+58 414 444-5555", email: "agomez@fondo.com", satisfaction: null, lastEvaluated: null, nextEvaluation: todayStr, history: [] },
+            { id: 8, name: "Banco de Desarrollo del Sur", type: "On-Premise", officer: "José Ramos", phone: "+58 424 666-7777", email: "jramos@bdesarrollo.com", satisfaction: null, lastEvaluated: null, nextEvaluation: todayStr, history: [] }
+        ];
+
+        let clientsData = [];
+
+        function loadFromLocalStorage() {
+            const savedData = localStorage.getItem('cx_alm_clients_data');
+            const savedCount = localStorage.getItem('cx_alm_today_count');
+            if (savedData) {
+                try {
+                    clientsData = JSON.parse(savedData);
+                } catch(e) {
+                    clientsData = JSON.parse(JSON.stringify(defaultClients));
+                }
+            } else {
+                clientsData = JSON.parse(JSON.stringify(defaultClients));
+            }
+
+            if (savedCount) {
+                todayEvaluatedCount = parseInt(savedCount, 10) || 0;
+            }
+        }
+
+        function saveToLocalStorage() {
+            localStorage.setItem('cx_alm_clients_data', JSON.stringify(clientsData));
+            localStorage.setItem('cx_alm_today_count', todayEvaluatedCount.toString());
+        }
+
+        function resetDataToDefault() {
+            if (confirm("¿Desea restablecer la base de datos a los valores de prueba iniciales?")) {
+                localStorage.removeItem('cx_alm_clients_data');
+                localStorage.removeItem('cx_alm_today_count');
+                todayEvaluatedCount = 0;
+                clientsData = JSON.parse(JSON.stringify(defaultClients));
+                saveToLocalStorage();
+                renderDashboard();
+                showToast('Datos reestablecidos a valores demo.', 'success');
+            }
+        }
+
+        let satisfactionChartInstance = null;
+
+        // Modal de Registro de Nuevo Cliente
+        function openNewClientModal() {
+            document.getElementById('new-client-form').reset();
+            document.getElementById('new-client-modal').classList.remove('hidden');
+        }
+
+        function closeNewClientModal() {
+            document.getElementById('new-client-modal').classList.add('hidden');
+        }
+
+        function saveNewClient(e) {
+            e.preventDefault();
+            const companyName = document.getElementById('new-company-name').value.trim();
+            const companyType = document.getElementById('new-company-type').value;
+            const officerName = document.getElementById('new-officer-name').value.trim();
+            const officerPhone = document.getElementById('new-officer-phone').value.trim();
+            const officerEmail = document.getElementById('new-officer-email').value.trim();
+
+            if (!companyName || !companyType || !officerName || !officerPhone || !officerEmail) {
+                showToast('Por favor complete todos los campos requeridos.', 'error');
+                return;
+            }
+
+            const nextId = clientsData.length > 0 ? Math.max(...clientsData.map(c => c.id)) + 1 : 1;
+
+            const newClientObj = {
+                id: nextId,
+                name: companyName,
+                type: companyType,
+                officer: officerName,
+                phone: officerPhone,
+                email: officerEmail,
+                satisfaction: null,
+                lastEvaluated: null,
+                nextEvaluation: todayStr,
+                history: []
+            };
+
+            clientsData.push(newClientObj);
+            saveToLocalStorage();
+            closeNewClientModal();
+
+            showToast(`Cliente "${companyName}" registrado exitosamente.`, 'success');
+
+            if (!document.getElementById('view-directory').classList.contains('hidden')) {
+                renderDirectory();
+            }
+            if (!document.getElementById('view-dashboard').classList.contains('hidden')) {
+                renderDashboard();
+            }
+        }
+
+        // Modal de Edición de Cliente
+        function openEditClientModal(clientId) {
+            const client = clientsData.find(c => c.id === clientId);
+            if (!client) return;
+
+            document.getElementById('edit-client-id').value = client.id;
+            document.getElementById('edit-company-name').value = client.name || '';
+            document.getElementById('edit-company-type').value = client.type || '';
+            document.getElementById('edit-officer-name').value = client.officer || '';
+            document.getElementById('edit-officer-phone').value = client.phone || '';
+            document.getElementById('edit-officer-email').value = client.email || '';
+
+            document.getElementById('edit-client-modal').classList.remove('hidden');
+        }
+
+        function closeEditClientModal() {
+            document.getElementById('edit-client-modal').classList.add('hidden');
+        }
+
+        function saveEditedClient(e) {
+            e.preventDefault();
+            const clientId = parseInt(document.getElementById('edit-client-id').value, 10);
+            const clientIndex = clientsData.findIndex(c => c.id === clientId);
+
+            if (clientIndex === -1) {
+                showToast('Error: No se encontró la empresa a editar.', 'error');
+                return;
+            }
+
+            const name = document.getElementById('edit-company-name').value.trim();
+            const type = document.getElementById('edit-company-type').value;
+            const officer = document.getElementById('edit-officer-name').value.trim();
+            const phone = document.getElementById('edit-officer-phone').value.trim();
+            const email = document.getElementById('edit-officer-email').value.trim();
+
+            if (!name || !type || !officer || !phone || !email) {
+                showToast('Por favor complete todos los campos requeridos.', 'error');
+                return;
+            }
+
+            clientsData[clientIndex].name = name;
+            clientsData[clientIndex].type = type;
+            clientsData[clientIndex].officer = officer;
+            clientsData[clientIndex].phone = phone;
+            clientsData[clientIndex].email = email;
+
+            saveToLocalStorage();
+            closeEditClientModal();
+            showToast(`Datos de "${name}" actualizados exitosamente.`, 'success');
+
+            if (!document.getElementById('view-directory').classList.contains('hidden')) {
+                renderDirectory();
+            }
+            if (!document.getElementById('view-dashboard').classList.contains('hidden')) {
+                renderDashboard();
+            }
+            if (!document.getElementById('view-evaluation').classList.contains('hidden')) {
+                renderEvaluationFormOptions();
+            }
+        }
+
+        function onCompanySelect(clientId) {
+            const card = document.getElementById('company-contact-card');
+            if(!clientId) {
+                card.classList.add('hidden');
+                return;
+            }
+
+            const client = clientsData.find(c => c.id == clientId);
+            if(client) {
+                document.getElementById('info-officer-name').innerText = `${client.officer} (${client.name})`;
+                document.getElementById('info-officer-phone').innerText = client.phone || 'Sin teléfono';
+                const countThisYear = client.history ? client.history.length : 0;
+                document.getElementById('info-officer-cycle').innerText = `${countThisYear}/3 completadas este año`;
+                card.classList.remove('hidden');
+            }
+        }
+
+        function sendWhatsAppSurvey() {
+            const clientId = document.getElementById('eval-company').value;
+            if(!clientId) {
+                showToast('Por favor seleccione una empresa primero.', 'error');
+                return;
+            }
+
+            const client = clientsData.find(c => c.id == clientId);
+            if(!client) return;
+
+            let phoneClean = (client.phone || '').replace(/[^\d]/g, '');
+            if(!phoneClean) {
+                showToast('La empresa seleccionada no posee un número de teléfono válido.', 'error');
+                return;
+            }
+
+            const textMessage = `Estimado(a) *${client.officer}* (${client.name}),\n\n` +
+                          `Le saludamos del equipo de *Customer Experience (CX) - ALM Support*.\n` +
+                          `En cumplimiento de nuestro plan de evaluación continua (3 revisiones al año), le solicitamos responder brevemente:\n\n` +
+                          `1️⃣ *Eficacia:* ¿Cómo califica la eficacia de nuestra plataforma ALM en la gestión y generación de alertas?\n\n` +
+                          `2️⃣ *Soporte:* ¿El equipo de soporte resolvió sus dudas operativas en los tiempos establecidos (SLA)?\n\n` +
+                          `3️⃣ *Reportes:* ¿Qué tan intuitiva le resulta la interfaz para la extracción de reportes regulatorios?\n\n` +
+                          `💬 *Observaciones:* ¿Tiene algún comentario, sugerencia o reclamo que desee indicarnos?\n\n` +
+                          `⭐ *Satisfacción General:* Por favor indíquenos su calificación general eligiendo una opción: *[Excelente / Regular / Mal]*\n\n` +
+                          `¡Agradecemos mucho sus respuestas para seguir garantizando la mejor calidad de servicio!`;
+
+            const encodedMsg = encodeURIComponent(textMessage);
+            const waUrl = `https://api.whatsapp.com/send?phone=${phoneClean}&text=${encodedMsg}`;
+            window.open(waUrl, '_blank');
+            showToast('Abriendo WhatsApp con la encuesta trimestral...', 'success');
+        }
+
+        function toggleQuickPaste() {
+            const box = document.getElementById('quick-paste-box');
+            box.classList.toggle('hidden');
+        }
+
+        function parseAndFillAnswers() {
+            const rawText = document.getElementById('raw-whatsapp-input').value.trim();
+            if(!rawText) {
+                showToast('Pegue el texto recibido del cliente primero.', 'error');
+                return;
+            }
+
+            const lower = rawText.toLowerCase();
+            let satisfactionFound = null;
+            if (lower.includes('excelente')) satisfactionFound = 'Excelente';
+            else if (lower.includes('regular')) satisfactionFound = 'Regular';
+            else if (lower.includes('mal')) satisfactionFound = 'Mal';
+
+            if(satisfactionFound) {
+                const radios = document.getElementsByName('satisfaction');
+                for(const r of radios) {
+                    if(r.value === satisfactionFound) r.checked = true;
+                }
+            }
+
+            const matches1 = rawText.match(/(?:1|1️⃣|Eficacia)[\s\:\.\-–]+([^\n\r2️⃣23💬⭐]+)/i);
+            const matches2 = rawText.match(/(?:2|2️⃣|Soporte)[\s\:\.\-–]+([^\n\r3️⃣3💬⭐]+)/i);
+            const matches3 = rawText.match(/(?:3|3️⃣|Reportes)[\s\:\.\-–]+([^\n\r💬⭐]+)/i);
+            const matchesObs = rawText.match(/(?:💬|Observaciones)[\s\:\.\-–]+([^\n\r⭐]+)/i);
+
+            if(matches1 && matches1[1]) document.getElementById('q1').value = matches1[1].trim();
+            else document.getElementById('q1').value = rawText.substring(0, 150);
+
+            if(matches2 && matches2[1]) document.getElementById('q2').value = matches2[1].trim();
+            else document.getElementById('q2').value = "Conforme según respuesta recibida.";
+
+            if(matches3 && matches3[1]) document.getElementById('q3').value = matches3[1].trim();
+            else document.getElementById('q3').value = "Interfaz intuitiva y funcional.";
+
+            if(matchesObs && matchesObs[1]) {
+                document.getElementById('client-note').value = matchesObs[1].trim();
+            }
+
+            toggleQuickPaste();
+            showToast('Formulario auto-completado con éxito.', 'success');
+        }
+
+        const views = ['dashboard', 'directory', 'evaluation'];
+        const titles = {
+            'dashboard': 'Dashboard General & Monitoreo 3x/Año',
+            'directory': 'Directorio General de Clientes',
+            'evaluation': 'Evaluación de Experiencia (CX ALM)'
+        };
+
+        function navigate(viewName) {
+            document.getElementById('page-title').innerText = titles[viewName];
+
+            views.forEach(v => {
+                document.getElementById(`view-${v}`).classList.add('hidden');
+                let btn = document.getElementById(`nav-${v}`);
+                if(btn) {
+                    btn.classList.remove('bg-alm-800', 'text-white');
+                    btn.classList.add('text-alm-100');
+                }
+            });
+
+            document.getElementById(`view-${viewName}`).classList.remove('hidden');
+            let activeBtn = document.getElementById(`nav-${viewName}`);
+            if(activeBtn) {
+                activeBtn.classList.remove('text-alm-100');
+                activeBtn.classList.add('bg-alm-800', 'text-white');
+            }
+
+            if(viewName === 'dashboard') renderDashboard();
+            if(viewName === 'directory') renderDirectory();
+            if(viewName === 'evaluation') renderEvaluationFormOptions();
+        }
+
+        function getBadge(satisfaction) {
+            if (!satisfaction) return `<span class="px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-500">Pendiente</span>`;
+            if (satisfaction === 'Excelente') return `<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200">Excelente</span>`;
+            if (satisfaction === 'Regular') return `<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">Regular</span>`;
+            if (satisfaction === 'Mal') return `<span class="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-800 border border-rose-200">Mal</span>`;
+            return '';
+        }
+
+        function renderDashboard() {
+            const total = clientsData.length;
+            const excellent = clientsData.filter(c => c.satisfaction === 'Excelente').length;
+            const regular = clientsData.filter(c => c.satisfaction === 'Regular').length;
+            const bad = clientsData.filter(c => c.satisfaction === 'Mal').length;
+            const pending = total - excellent - regular - bad;
+
+            document.getElementById('stat-total').innerText = total;
+            document.getElementById('stat-excellent').innerText = excellent;
+            document.getElementById('stat-regular').innerText = regular;
+            document.getElementById('stat-bad').innerText = bad;
+
+            document.getElementById('daily-quota-badge').innerText = `Evaluados hoy: ${todayEvaluatedCount}/5`;
+
+            // Canvas Chart.js
+            const ctx = document.getElementById('satisfactionChart');
+            if (ctx) {
+                if (satisfactionChartInstance) satisfactionChartInstance.destroy();
+                satisfactionChartInstance = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Excelente', 'Regular', 'Mal', 'Sin Evaluar'],
+                        datasets: [{
+                            data: [excellent, regular, bad, pending],
+                            backgroundColor: ['#10b981', '#f59e0b', '#f43f5e', '#cbd5e1'],
+                            borderWidth: 2,
+                            borderColor: '#ffffff',
+                            hoverOffset: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { 
+                            legend: { position: 'right', labels: { boxWidth: 10, font: {size: 11} } } 
+                        }
+                    }
+                });
+            }
+
+            // Lista de monitoreo diario
+            let dueToday = clientsData.filter(c => c.nextEvaluation && c.nextEvaluation <= todayStr);
+            dueToday.sort((a,b) => new Date(a.nextEvaluation) - new Date(b.nextEvaluation));
+            const dailyBatch = dueToday.slice(0, 5);
+
+            const alertList = document.getElementById('monitoring-list');
+            document.getElementById('alert-count').innerText = dailyBatch.length;
+            
+            if(alertList) {
+                alertList.innerHTML = '';
+                if(dailyBatch.length === 0) {
+                    alertList.innerHTML = '<li class="p-6 text-slate-500 text-sm flex items-center justify-center h-full"><i class="ph ph-check-circle mr-2 text-xl text-emerald-500"></i> ¡Objetivo alcanzado! No hay clientes pendientes en la cuota de hoy.</li>';
+                } else {
+                    dailyBatch.forEach(client => {
+                        const countThisYear = client.history ? client.history.length : 0;
+                        const li = document.createElement('li');
+                        li.className = "p-4 flex justify-between items-center hover:bg-slate-50 transition border-b border-slate-100 last:border-0";
+                        li.innerHTML = `
+                            <div>
+                                <div class="flex items-center space-x-2">
+                                    <p class="font-semibold text-slate-800 text-sm">${client.name}</p>
+                                    <span class="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-medium">Rev. ${countThisYear + 1}/3</span>
+                                </div>
+                                <p class="text-xs text-slate-500 mt-0.5">
+                                    <i class="ph ph-user"></i> ${client.officer} &bull; <i class="ph ph-phone"></i> ${client.phone}
+                                </p>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <button onclick="openHistoryModal(${client.id})" class="text-slate-500 hover:text-slate-800 p-2 rounded-lg hover:bg-slate-200/60 transition" title="Ver Historial">
+                                    <i class="ph ph-clock-counter-clockwise text-lg"></i>
+                                </button>
+                                <button onclick="evaluateClient(${client.id})" class="bg-rose-100 text-rose-800 hover:bg-rose-200 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition">
+                                    <i class="ph-bold ph-clipboard-text mr-1"></i> Evaluar
+                                </button>
+                            </div>
+                        `;
+                        alertList.appendChild(li);
+                    });
+                }
+            }
+
+            // Renderizar la tabla principal con el filtro aplicado
+            filterDashboardTable();
+        }
+
+        // Función para poblar la tabla del Dashboard (admite filtrado)
+        function populateDashboardTable(dataToDisplay) {
+            const tbody = document.getElementById('dashboard-table-body');
+            tbody.innerHTML = '';
+
+            if (dataToDisplay.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="px-6 py-8 text-center text-slate-400">No se encontraron empresas o oficiales coincidentes.</td></tr>`;
+                return;
+            }
+
+            dataToDisplay.forEach(client => {
+                const tr = document.createElement('tr');
+                tr.className = "border-b border-slate-50 hover:bg-slate-50 transition-colors";
+                const historyCount = client.history ? client.history.length : 0;
+                tr.innerHTML = `
+                    <td class="px-6 py-4 font-semibold text-slate-800">
+                        ${client.name}
+                        <span class="block text-xs font-normal text-slate-400">${client.type}</span>
+                    </td>
+                    <td class="px-6 py-4 text-slate-600">${client.officer}</td>
+                    <td class="px-6 py-4 text-xs text-slate-500">${client.lastEvaluated ? client.lastEvaluated : 'Sin evaluar'}</td>
+                    <td class="px-6 py-4 text-xs font-medium ${client.nextEvaluation <= todayStr ? 'text-rose-600 font-semibold' : 'text-slate-600'}">
+                        ${client.nextEvaluation || 'Pendiente'}
+                    </td>
+                    <td class="px-6 py-4">${getBadge(client.satisfaction)}</td>
+                    <td class="px-6 py-4 text-right space-x-1">
+                        <button onclick="openHistoryModal(${client.id})" class="text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 font-medium text-xs px-2.5 py-1.5 rounded-lg transition" title="Ver Historial">
+                            <i class="ph ph-clock-counter-clockwise text-sm mr-1"></i>Historial (${historyCount})
+                        </button>
+                        <button onclick="evaluateClient(${client.id})" class="text-alm-600 hover:text-alm-800 font-medium text-xs bg-alm-50 hover:bg-alm-100 px-3 py-1.5 rounded-lg transition">
+                            Evaluar
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Función de Filtrado en Tiempo Real para el Dashboard
+        function filterDashboardTable() {
+            const input = document.getElementById('search-dashboard-input');
+            const query = input ? input.value.toLowerCase().trim() : '';
+
+            const filtered = clientsData.filter(client => 
+                client.name.toLowerCase().includes(query) || 
+                client.officer.toLowerCase().includes(query) ||
+                client.type.toLowerCase().includes(query)
+            );
+
+            populateDashboardTable(filtered);
+        }
+
+        function renderDirectory() {
+            const tbody = document.getElementById('directory-table-body');
+            tbody.innerHTML = '';
+
+            clientsData.forEach(client => {
+                const tr = document.createElement('tr');
+                tr.className = "border-b border-slate-50 hover:bg-slate-50 transition-colors directory-row";
+                const historyCount = client.history ? client.history.length : 0;
+                
+                tr.innerHTML = `
+                    <td class="px-6 py-4 font-semibold text-slate-800 client-name">${client.name}</td>
+                    <td class="px-6 py-4 text-slate-500"><span class="bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md text-xs font-medium border border-blue-100">${client.type}</span></td>
+                    <td class="px-6 py-4 text-slate-700 font-medium client-officer"><i class="ph ph-user-circle text-lg mr-1.5 text-slate-400"></i> ${client.officer}</td>
+                    <td class="px-6 py-4 text-slate-500 text-xs">
+                        <div><i class="ph ph-phone mr-1"></i> ${client.phone}</div>
+                        <div class="text-blue-600 hover:underline cursor-pointer"><i class="ph ph-envelope-simple mr-1"></i> ${client.email}</div>
+                    </td>
+                    <td class="px-6 py-4 text-slate-600 text-xs">
+                        <span class="font-semibold text-slate-800">${historyCount} de 3</span> evaluadas este año
+                    </td>
+                    <td class="px-6 py-4 text-right">
+                        <div class="flex items-center justify-end space-x-2">
+                            <button onclick="openEditClientModal(${client.id})" class="bg-teal-50 hover:bg-teal-100 text-teal-700 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition flex items-center" title="Editar datos de la empresa">
+                                <i class="ph ph-pencil-simple text-sm mr-1"></i> Editar
+                            </button>
+                            <button onclick="openHistoryModal(${client.id})" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold px-2.5 py-1.5 rounded-lg transition flex items-center" title="Ver Historial">
+                                <i class="ph ph-eye mr-1 text-sm"></i> Historial (${historyCount})
+                            </button>
+                        </div>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function filterDirectory() {
+            const query = document.getElementById('search-directory-input').value.toLowerCase();
+            const rows = document.querySelectorAll('.directory-row');
+            rows.forEach(row => {
+                const name = row.querySelector('.client-name').innerText.toLowerCase();
+                const officer = row.querySelector('.client-officer').innerText.toLowerCase();
+                if(name.includes(query) || officer.includes(query)) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+
+        function renderEvaluationFormOptions() {
+            const select = document.getElementById('eval-company');
+            select.innerHTML = '<option value="">-- Seleccionar de la lista --</option>';
+            
+            clientsData.forEach(client => {
+                const opt = document.createElement('option');
+                opt.value = client.id;
+                const evalCount = client.history ? client.history.length : 0;
+                opt.text = `${client.name} - (Evaluaciones este año: ${evalCount}/3)`;
+                select.appendChild(opt);
+            });
+            
+            document.getElementById('company-contact-card').classList.add('hidden');
+        }
+
+        function evaluateClient(clientId) {
+            navigate('evaluation');
+            setTimeout(() => {
+                const select = document.getElementById('eval-company');
+                select.value = clientId;
+                onCompanySelect(clientId);
+            }, 50);
+        }
+
+        function openHistoryModal(clientId) {
+            const client = clientsData.find(c => c.id === clientId);
+            if(!client) return;
+
+            document.getElementById('modal-client-name').innerText = client.name;
+            document.getElementById('modal-client-info').innerText = `Oficial: ${client.officer} | ${client.type} | Tel: ${client.phone}`;
+
+            const container = document.getElementById('modal-history-content');
+            container.innerHTML = '';
+
+            if(!client.history || client.history.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-12 text-slate-400">
+                        <i class="ph ph-folder-open text-5xl mb-3 block text-slate-300"></i>
+                        <p class="text-base font-medium">No hay evaluaciones registradas aún para esta empresa.</p>
+                        <p class="text-xs text-slate-400 mt-1">Realice la primera evaluación de las 3 anuales desde el módulo correspondiente.</p>
+                    </div>
+                `;
+            } else {
+                client.history.forEach((evalItem, index) => {
+                    const card = document.createElement('div');
+                    card.className = "bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4 relative";
+                    
+                    card.innerHTML = `
+                        <div class="flex flex-wrap justify-between items-center border-b border-slate-200 pb-3 gap-2">
+                            <div class="flex items-center space-x-2">
+                                <span class="bg-alm-900 text-teal-300 text-xs font-bold px-2.5 py-1 rounded-md">
+                                    ${evalItem.cycle || 'Evaluación #' + (index + 1)}
+                                </span>
+                                <span class="text-xs text-slate-500"><i class="ph ph-calendar text-sm mr-1"></i> ${evalItem.date}</span>
+                            </div>
+                            <div>
+                                ${getBadge(evalItem.satisfaction)}
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                            <div class="bg-white p-3 rounded-lg border border-slate-100">
+                                <p class="font-semibold text-slate-700 mb-1">1. Eficacia Alertas ALM:</p>
+                                <p class="text-slate-600">${evalItem.q1 || '-'}</p>
+                            </div>
+                            <div class="bg-white p-3 rounded-lg border border-slate-100">
+                                <p class="font-semibold text-slate-700 mb-1">2. Tiempos SLA Soporte:</p>
+                                <p class="text-slate-600">${evalItem.q2 || '-'}</p>
+                            </div>
+                            <div class="bg-white p-3 rounded-lg border border-slate-100">
+                                <p class="font-semibold text-slate-700 mb-1">3. Interfaz / Reportes:</p>
+                                <p class="text-slate-600">${evalItem.q3 || '-'}</p>
+                            </div>
+                        </div>
+
+                        ${evalItem.clientNote ? `
+                            <div class="bg-teal-50/70 border border-teal-100 p-3 rounded-lg text-xs">
+                                <p class="font-bold text-teal-900 mb-0.5 flex items-center">
+                                    <i class="ph ph-chat-circle-text text-sm mr-1.5 text-teal-700"></i> Observación del Cliente:
+                                </p>
+                                <p class="text-teal-800">${evalItem.clientNote}</p>
+                            </div>
+                        ` : ''}
+
+                        ${evalItem.techNote ? `
+                            <div class="bg-slate-200/60 border border-slate-300 p-3 rounded-lg text-xs">
+                                <p class="font-bold text-slate-800 mb-0.5 flex items-center">
+                                    <i class="ph ph-wrench text-sm mr-1.5 text-slate-600"></i> Seguimiento Soporte Técnico:
+                                </p>
+                                <p class="text-slate-700">${evalItem.techNote}</p>
+                            </div>
+                        ` : ''}
+                    `;
+                    container.appendChild(card);
+                });
+            }
+
+            document.getElementById('history-modal').classList.remove('hidden');
+        }
+
+        function closeHistoryModal() {
+            document.getElementById('history-modal').classList.add('hidden');
+        }
+
+        function submitEvaluation(e) {
+            e.preventDefault();
+            
+            const clientId = parseInt(document.getElementById('eval-company').value, 10);
+            const satisfactionRadios = document.getElementsByName('satisfaction');
+            let selectedSatisfaction = null;
+
+            for(const radio of satisfactionRadios) {
+                if(radio.checked) {
+                    selectedSatisfaction = radio.value;
+                    break;
+                }
+            }
+
+            if(!clientId || !selectedSatisfaction) {
+                showToast('Por favor seleccione una empresa y su nivel de satisfacción.', 'error');
+                return;
+            }
+
+            const clientIndex = clientsData.findIndex(c => c.id === clientId);
+            if(clientIndex !== -1) {
+                const client = clientsData[clientIndex];
+                
+                if(!client.history) client.history = [];
+
+                const historyCount = client.history.length + 1;
+                const cycleLabel = `Ciclo ${historyCount <= 3 ? historyCount : (historyCount % 3 || 3)} / 3`;
+
+                const newEvalRecord = {
+                    date: todayStr,
+                    cycle: cycleLabel,
+                    satisfaction: selectedSatisfaction,
+                    q1: document.getElementById('q1').value,
+                    q2: document.getElementById('q2').value,
+                    q3: document.getElementById('q3').value,
+                    clientNote: document.getElementById('client-note').value.trim(),
+                    techNote: document.getElementById('tech-note').value.trim()
+                };
+
+                client.history.unshift(newEvalRecord);
+                client.satisfaction = selectedSatisfaction;
+                client.lastEvaluated = todayStr;
+                
+                let nextDate = new Date();
+                nextDate.setMonth(nextDate.getMonth() + MONTHS_CYCLE);
+                client.nextEvaluation = nextDate.toISOString().split('T')[0];
+                
+                todayEvaluatedCount++;
+                saveToLocalStorage();
+            }
+
+            document.getElementById('evaluation-form').reset();
+            document.getElementById('company-contact-card').classList.add('hidden');
+            
+            showToast(`Evaluación de ${clientsData[clientIndex].name} guardada exitosamente. Próxima revisión agendada en 4 meses.`, 'success');
+
+            setTimeout(() => {
+                navigate('dashboard');
+            }, 1200);
+        }
+
+        function exportCSV() {
+            let csvContent = "data:text/csv;charset=utf-8,";
+            csvContent += "ID,Empresa,Tipo,Oficial,Telefono,Correo,Satisfaccion,Ultima Evaluacion,Proxima Evaluacion,Total Evaluaciones\n";
+            clientsData.forEach(row => {
+                const sat = row.satisfaction || 'Pendiente';
+                const count = row.history ? row.history.length : 0;
+                csvContent += `${row.id},"${row.name}","${row.type}","${row.officer}","${row.phone}","${row.email}","${sat}","${row.lastEvaluated||''}","${row.nextEvaluation||''}","${count}"\n`;
+            });
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "directorio_clientes_alm_cx.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast('Directorio exportado exitosamente.', 'success');
+        }
+
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current.trim().replace(/^"|"$/g, ''));
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            result.push(current.trim().replace(/^"|"$/g, ''));
+            return result;
+        }
+
+        function importCSV(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const text = e.target.result;
+                const rows = text.split('\n');
+                let importedCount = 0;
+                
+                for(let i = 1; i < rows.length; i++) {
+                    if(!rows[i].trim()) continue;
+                    const cols = parseCSVLine(rows[i]);
+                    if(cols.length >= 6) {
+                        const newId = clientsData.length > 0 ? Math.max(...clientsData.map(c => c.id)) + 1 : 1;
+                        clientsData.push({
+                            id: newId,
+                            name: cols[1] || 'Empresa Sin Nombre',
+                            type: cols[2] || 'On-Premise',
+                            officer: cols[3] || 'Sin Oficial',
+                            phone: cols[4] || '',
+                            email: cols[5] || '',
+                            satisfaction: null,
+                            lastEvaluated: null,
+                            nextEvaluation: todayStr,
+                            history: []
+                        });
+                        importedCount++;
+                    }
+                }
+                saveToLocalStorage();
+                showToast(`Se han importado ${importedCount} clientes a la plataforma.`, 'success');
+                event.target.value = '';
+                
+                if(!document.getElementById('view-directory').classList.contains('hidden')) renderDirectory();
+                if(!document.getElementById('view-dashboard').classList.contains('hidden')) renderDashboard();
+            };
+            reader.readAsText(file);
+        }
+
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const bg = type === 'success' ? 'bg-emerald-700' : 'bg-rose-700';
+            const icon = type === 'success' ? 'ph-check-circle' : 'ph-warning-circle';
+
+            toast.className = `${bg} text-white px-5 py-3.5 rounded-xl shadow-xl flex items-center fade-in text-sm font-medium`;
+            toast.innerHTML = `
+                <i class="ph ${icon} text-xl mr-3"></i>
+                <span>${message}</span>
+            `;
+
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(10px)';
+                toast.style.transition = 'all 0.3s ease-out';
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        window.onload = () => {
+            loadFromLocalStorage();
+            renderDashboard();
+        };
+    </script>
+</body>
+</html>
